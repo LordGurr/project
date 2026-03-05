@@ -43,8 +43,8 @@ class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     barcode = db.Column(db.String(100), unique=True, nullable=False)
-    price = db.Column(db.Integer, nullable=False)  # Price in öre (cents), e.g., 1000 = 10.00 kr
-    stock = db.Column(db.Integer, default=0)
+    price = db.Column(db.Integer, db.CheckConstraint('price >= 0'), nullable=False)  # Price in öre (cents), e.g., 1000 = 10.00 kr
+    stock = db.Column(db.Integer, db.CheckConstraint('stock >= 0'), default=0)
     active = db.Column(db.Boolean, default=True)
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
     image_url = db.Column(db.String(500))
@@ -97,6 +97,7 @@ class Customer(db.Model):
     last_name = db.Column(db.String(100))
     address = db.Column(db.Text)
     phone = db.Column(db.String(20))
+    role = db.Column(db.Integer, default=0) # 0:user, 1: admin, 2: system
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships

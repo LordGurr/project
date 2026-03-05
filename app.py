@@ -7,6 +7,7 @@ Endpoints:
 - /api/cart - Shopping basket operations
 - /api/orders - Order placement and management
 - /api/reviews - Product reviews and ratings
+- /api/admin/* - admin panel for moderation
 """
 
 from flask import Flask, request, jsonify
@@ -61,13 +62,14 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# release expired reservation
 
 #  health check
 @app.route('/')
 def index():
     return jsonify({
         'name': 'Bosch Food Store API',
-        'description': 'E-commerce API for snacks, drinks, and food',
+        'description': 'GUSTAV JUUL STORE',
         'endpoints': [
             'GET /api/health',
             'GET/POST /api/categories',
@@ -119,11 +121,11 @@ def create_category():
     if not data or not data.get('name'):
         return error_response('Category name is required')
     
-    if Category.query.filter_by(name=data.get('name')).first():
+    if Category.query.filter_by(name=data['name']).first():
         return error_response('Category already exists')
     
     category = Category(
-        name=data.get('name'),
+        name=data['name'],
         description=data.get('description')
     )
     db.session.add(category)
@@ -144,12 +146,10 @@ def get_category(category_id):
 # products
 @app.route('/api/products', methods=['GET'])
 def get_products():
-    CORS(app) 
     """
     Get products with  filters
     Query params: category_id, active, in_stock, min_price, max_price, search, barcode
     """
-    
     query = Product.query
     
     # apply filters
@@ -220,7 +220,7 @@ def create_product():
     """Create a new product"""
     data = request.get_json()
     
-    required_fields = ['name', 'barcode', 'price']
+    required_fields = ['name', 'barcode', 'price','stock']
     for field in required_fields:
         if field not in data:
             return error_response(f'{field} is required')
@@ -471,21 +471,7 @@ def clear_cart():
     db.session.commit()
     return success_response(None, 'Cart cleared')
 
-@app.route('/debug-cart-add', methods=['POST'])
-def debug_cart_add():
-    try:
-        # Simulate your add-to-cart logic here
-        # Example using raw SQL – replace with your real code
-        conn = db.engine.connect()
-        conn.execute(db.text("""
-            INSERT INTO cart_items (user_id, item_id, quantity)
-            VALUES (1, 1, 1)
-        """))
-        conn.commit()
-        return {"message": "Test insert OK"}, 200
-    except Exception as e:
-        import traceback
-        return {"error": str(e), "trace": traceback.format_exc()}, 500
+
 @app.route('/api/cart/checkout', methods=['POST'])
 @login_required
 def checkout():

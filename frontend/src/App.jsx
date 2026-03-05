@@ -72,7 +72,7 @@ function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) 
               My Orders
             </button>
           )}
-          {customer && customer.email && customer.email.toLowerCase().includes('admin') && (
+          {customer && customer.email && customer.role > 0 && (
             <button
               style={currentPage === 'admin' ? styles.navButtonActive : styles.navButton}
               onClick={() => setCurrentPage('admin')}
@@ -608,7 +608,7 @@ function AdminPage({ setToast }) {
           <form onSubmit={handleProductSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <input style={styles.input} placeholder="Name" value={productForm.name} onChange={(e) => setProductForm({...productForm, name: e.target.value})} required />
             <input style={styles.input} placeholder="Barcode" value={productForm.barcode} onChange={(e) => setProductForm({...productForm, barcode: e.target.value})} required />
-            <input style={styles.input} placeholder="Price (kr)" value={productForm.price} onChange={(e) => setProductForm({...productForm, price: e.target.value})} required />
+            <input style={styles.input} placeholder="Price (kr)" type="number" value={productForm.price} onChange={(e) => setProductForm({...productForm, price: e.target.value})} required />
             <input style={styles.input} placeholder="Stock" type="number" value={productForm.stock} onChange={(e) => setProductForm({...productForm, stock: e.target.value})} />
             <select style={styles.select} value={productForm.category_id || ''} onChange={(e) => setProductForm({...productForm, category_id: e.target.value})}>
               <option value="">Uncategorized</option>
