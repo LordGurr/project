@@ -133,6 +133,33 @@ def create_category():
     
     return success_response(category.to_dict(), 'Category created', 201)
 
+@app.route('/api/categories/<int:category_id>', methods=['PUT'])
+def update_category(category_id):
+    """Update a category"""
+    category = Category.query.get_or_404(category_id)
+    data = request.get_json()
+    
+    # update fields
+    for field in ['name', 'description']:
+        if field in data:
+            setattr(category, field, data[field])
+    
+    db.session.commit()
+    return success_response(category.to_dict(), 'Category updated')
+
+@app.route('/api/categories/<int:category_id>', methods=['DELETE'])
+def delete_category(category_id):
+    """Delete a category"""
+    category = Category.query.get_or_404(category_id)
+
+    # Prevent deleting if products exist
+    if category.products:
+        return error_response('Cannot delete category with products')
+
+    db.session.delete(category)
+    db.session.commit()
+
+    return success_response(None, 'Category deleted')
 
 @app.route('/api/categories/<int:category_id>', methods=['GET'])
 def get_category(category_id):
@@ -220,7 +247,7 @@ def create_product():
     """Create a new product"""
     data = request.get_json()
     
-    required_fields = ['name', 'barcode', 'price','stock']
+    required_fields = ['name', 'barcode', 'price']
     for field in required_fields:
         if field not in data:
             return error_response(f'{field} is required')

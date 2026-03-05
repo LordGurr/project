@@ -495,7 +495,8 @@ function AdminPage({ setToast }) {
 
   const emptyProduct = { id: null, name: '', barcode: '', price: '', stock: 0, category_id: '', active: true };
   const [productForm, setProductForm] = useState(emptyProduct);
-
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [categoryEditName, setCategoryEditName] = useState('');
   useEffect(() => {
     loadAll();
   }, []);
@@ -521,6 +522,26 @@ function AdminPage({ setToast }) {
       await api('/categories', { method: 'POST', body: { name: categoryName, description: 'Test category' } });
       setCategoryName('');
       setToast('Category created');
+      await loadAll();
+    } catch (err) {
+      setToast(err.message);
+    }
+  };
+
+  const handleEditCategory = (cat) => {
+    setEditingCategory(cat.id);
+    setCategoryEditName(cat.name);
+  };
+
+  const handleSaveCategory = async (id) => {
+    try {
+      await api(`/categories/${id}`, {
+        method: 'PUT',
+        body: { name: categoryEditName }
+      });
+
+      setToast('Category updated');
+      setEditingCategory(null);
       await loadAll();
     } catch (err) {
       setToast(err.message);
@@ -587,6 +608,73 @@ function AdminPage({ setToast }) {
 
       <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
+          <div style={{ marginBottom: 40 }}>
+          <h3>Categories</h3>
+
+          {categories.map(cat => (
+            <div key={cat.id} style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              background: '#fff',
+              padding: '10px',
+              borderRadius: 8,
+              marginBottom: 8
+            }}>
+
+              {editingCategory === cat.id ? (
+                <>
+                  <input
+                    style={styles.input}
+                    value={categoryEditName}
+                    onChange={(e)=>setCategoryEditName(e.target.value)}
+                  />
+
+                  <div style={{display:'flex',gap:6}}>
+                    <button
+                      style={styles.pageButton}
+                      onClick={()=>handleSaveCategory(cat.id)}
+                    >
+                      Save
+                    </button>
+
+                    <button
+                      style={styles.pageButton}
+                      onClick={()=>setEditingCategory(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <strong>{cat.name}</strong>
+                    <div style={{fontSize:12,color:'#666'}}>
+                      {cat.product_count} products
+                    </div>
+                  </div>
+
+                  <div style={{display:'flex',gap:8}}>
+                    <button
+                      style={styles.pageButton}
+                      onClick={()=>handleEditCategory(cat)}
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      style={{...styles.pageButton,background:'#e94560'}}
+                      onClick={()=>handleDeleteCategory(cat)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </>
+              )}
+
+            </div>
+          ))}
+          </div>
           <h3>Products</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {products.map(p => (
