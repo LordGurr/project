@@ -24,7 +24,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
+      start_period: 30s
   flask:
     build:
       context: .
@@ -55,3 +55,7 @@ services:
 
 volumes:
   db-data:
+
+networks:
+  default:
+    name: e_commerce_network

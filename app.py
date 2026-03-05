@@ -119,11 +119,11 @@ def create_category():
     if not data or not data.get('name'):
         return error_response('Category name is required')
     
-    if Category.query.filter_by(name=data['name']).first():
+    if Category.query.filter_by(name=data.get('name')).first():
         return error_response('Category already exists')
     
     category = Category(
-        name=data['name'],
+        name=data.get('name'),
         description=data.get('description')
     )
     db.session.add(category)
@@ -471,7 +471,21 @@ def clear_cart():
     db.session.commit()
     return success_response(None, 'Cart cleared')
 
-
+@app.route('/debug-cart-add', methods=['POST'])
+def debug_cart_add():
+    try:
+        # Simulate your add-to-cart logic here
+        # Example using raw SQL – replace with your real code
+        conn = db.engine.connect()
+        conn.execute(db.text("""
+            INSERT INTO cart_items (user_id, item_id, quantity)
+            VALUES (1, 1, 1)
+        """))
+        conn.commit()
+        return {"message": "Test insert OK"}, 200
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "trace": traceback.format_exc()}, 500
 @app.route('/api/cart/checkout', methods=['POST'])
 @login_required
 def checkout():

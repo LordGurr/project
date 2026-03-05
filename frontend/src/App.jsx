@@ -72,6 +72,14 @@ function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) 
               My Orders
             </button>
           )}
+          {customer && customer.email && customer.email.toLowerCase().includes('admin') && (
+            <button
+              style={currentPage === 'admin' ? styles.navButtonActive : styles.navButton}
+              onClick={() => setCurrentPage('admin')}
+            >
+              Admin
+            </button>
+          )}
         </nav>
         
         <div style={styles.headerRight}>
@@ -477,6 +485,163 @@ function OrdersPage({ customer, setCurrentPage }) {
   );
 }
 
+// Admin Page - manage products and categories
+function AdminPage({ setToast }) {
+  const [categories, setCategories] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const [categoryName, setCategoryName] = useState('');
+
+  const emptyProduct = { id: null, name: '', barcode: '', price: '', stock: 0, category_id: '', active: true };
+  const [productForm, setProductForm] = useState(emptyProduct);
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  const loadAll = async () => {
+    setLoading(true);
+    try {
+      const c = await api('/categories');
+      setCategories(c.data || []);
+      const p = await api('/products?per_page=200');
+      setProducts(p.data.products || []);
+    } catch (err) {
+      console.error('Admin load failed', err);
+      setToast && setToast(err.message);
+    }
+    setLoading(false);
+  };
+
+  const handleCreateCategory = async (e) => {
+    e.preventDefault();
+    if (!categoryName) return;
+    try {
+      await api('/categories', { method: 'POST', body: { name: categoryName, description: 'Test category' } });
+      setCategoryName('');
+      setToast('Category created');
+      await loadAll();
+    } catch (err) {
+      setToast(err.message);
+    }
+  };
+
+  const handleEditProduct = (p) => {
+    setProductForm({
+      id: p.id,
+      name: p.name || '',
+      barcode: p.barcode || '',
+      price: (p.price / 100).toFixed(2),
+      stock: p.stock || 0,
+      category_id: p.category_id || '',
+      active: !!p.active,
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDeleteProduct = async (p) => {
+    if (!window.confirm(`Delete ${p.name}?`)) return;
+    try {
+      await api(`/products/${p.id}?hard=true`, { method: 'DELETE' });
+      setToast('Product deleted');
+      await loadAll();
+    } catch (err) {
+      setToast(err.message);
+    }
+  };
+
+  const handleProductSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const body = {
+        name: productForm.name,
+        barcode: productForm.barcode,
+        price: Math.round(parseFloat(productForm.price || 0) * 100),
+        stock: parseInt(productForm.stock || 0, 10),
+        category_id: productForm.category_id || null,
+        active: productForm.active,
+        image_url: 'https://ludd.ltu.se/~lordgurr/M%C3%A4rkesSida/NewCompressed/allvar.jpg',
+      };
+
+      if (productForm.id) {
+        await api(`/products/${productForm.id}`, { method: 'PUT', body });
+        setToast('Product updated');
+      } else {
+        await api('/products', { method: 'POST', body });
+        setToast('Product created');
+      }
+
+      setProductForm(emptyProduct);
+      await loadAll();
+    } catch (err) {
+      setToast(err.message);
+    }
+  };
+
+  if (loading) return <div style={styles.loading}>Loading admin...</div>;
+
+  return (
+    <div style={styles.page}>
+      <h2 style={styles.pageTitle}>Admin - Products & Categories</h2>
+
+      <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <h3>Products</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {products.map(p => (
+              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '10px', borderRadius: 8 }}>
+                <div>
+                  <strong>{p.name}</strong> <div style={{ fontSize: 12, color: '#666' }}>{p.barcode} • {p.category_name || '—'}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button style={styles.pageButton} onClick={() => handleEditProduct(p)}>Edit</button>
+                  <button style={{ ...styles.pageButton, backgroundColor: '#e94560' }} onClick={() => handleDeleteProduct(p)}>Delete</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ width: 380 }}>
+          <h3 style={{ marginTop: 0 }}>{productForm.id ? 'Edit Product' : 'New Product'}</h3>
+          <form onSubmit={handleProductSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <input style={styles.input} placeholder="Name" value={productForm.name} onChange={(e) => setProductForm({...productForm, name: e.target.value})} required />
+            <input style={styles.input} placeholder="Barcode" value={productForm.barcode} onChange={(e) => setProductForm({...productForm, barcode: e.target.value})} required />
+            <input style={styles.input} placeholder="Price (kr)" value={productForm.price} onChange={(e) => setProductForm({...productForm, price: e.target.value})} required />
+            <input style={styles.input} placeholder="Stock" type="number" value={productForm.stock} onChange={(e) => setProductForm({...productForm, stock: e.target.value})} />
+            <select style={styles.select} value={productForm.category_id || ''} onChange={(e) => setProductForm({...productForm, category_id: e.target.value})}>
+              <option value="">Uncategorized</option>
+              {categories.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <label style={styles.checkbox}><input type="checkbox" checked={productForm.active} onChange={(e) => setProductForm({...productForm, active: e.target.checked})} /> Active</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button type="submit" style={styles.primaryButton}>{productForm.id ? 'Save' : 'Create'}</button>
+              <button type="button" style={{ ...styles.pageButton }} onClick={() => setProductForm(emptyProduct)}>Reset</button>
+            </div>
+          </form>
+
+          <hr style={{ margin: '20px 0' }} />
+
+          <h3>Categories</h3>
+          <form onSubmit={handleCreateCategory} style={{ display: 'flex', gap: '8px' }}>
+            <input style={styles.input} placeholder="Category name" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
+            <button type="submit" style={styles.primaryButton}>Create</button>
+          </form>
+
+          <div style={{ marginTop: 10 }}>
+            {categories.map(c => (
+              <div key={c.id} style={{ background: '#fff', padding: '8px', borderRadius: 6, marginBottom: 6 }}>{c.name}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Login/Register Page
 function AuthPage({ onLogin, setCurrentPage }) {
   const [isRegister, setIsRegister] = useState(false);
@@ -726,6 +891,10 @@ export default function App() {
           <OrdersPage customer={customer} setCurrentPage={setCurrentPage} />
         )}
         
+        {currentPage === 'admin' && (
+          <AdminPage setToast={setToast} />
+        )}
+
         {currentPage === 'login' && (
           <AuthPage onLogin={handleLogin} setCurrentPage={setCurrentPage} />
         )}
