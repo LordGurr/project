@@ -135,7 +135,7 @@ function ProductCard({ product, onAddToCart }) {
       </div>
       
       <div style={styles.productInfo}>
-        <h3 style={styles.productName}>{product.name}</h3>
+        <button> <h3> style={styles.productName}{product.name}</h3> onClick=</button>
         <p style={styles.productCategory}>{product.category_name || 'Other'}</p>
         <p style={styles.productBarcode}>#{product.barcode}</p>
         
@@ -308,6 +308,20 @@ function ProductsPage({ onAddToCart }) {
   );
 }
 
+function addHours (date = new Date(),hours) {  
+  if (typeof hours !== 'number') {
+    throw new Error('Invalid "hours" argument')
+  }
+
+  if (!(date instanceof Date)) {
+    throw new Error('Invalid "date" argument')
+  }
+
+  date.setHours(date.getHours() + hours)
+
+  return date
+}
+
 // Cart Page
 function CartPage({ cart, onUpdateQuantity, onRemove, onCheckout, onExtendReservation, customer, setCurrentPage }) {
   const [checking, setChecking] = useState(false);
@@ -357,14 +371,6 @@ function CartPage({ cart, onUpdateQuantity, onRemove, onCheckout, onExtendReserv
   return (
     <div style={styles.page}>
       <h2 style={styles.pageTitle}>Shopping Cart</h2>
-      
-      <div style={styles.reservationBanner}>
-        <span>⏱️ Items reserved for {cart.reservation_minutes || 15} minutes</span>
-        <button style={styles.extendButton} onClick={onExtendReservation}>
-          Extend Reservation
-        </button>
-      </div>
-      
       <div style={styles.cartContainer}>
         <div style={styles.cartItems}>
           {cart.items.map(item => (
@@ -376,7 +382,7 @@ function CartPage({ cart, onUpdateQuantity, onRemove, onCheckout, onExtendReserv
                 </p>
                 {item.is_reserved ? (
                   <p style={styles.reservedLabel}>
-                    ✓ Reserved until {new Date(item.reserved_until).toLocaleTimeString()}
+                    ✓ Reserved until {addHours(new Date(item.reserved_until),1).toLocaleTimeString()}
                   </p>
                 ) : (
                   <p style={styles.expiredLabel}>⚠️ Reservation expired</p>
@@ -574,6 +580,18 @@ function AdminPage({ setToast }) {
     }
   };
 
+  const handleDeleteCategory = async (cat) => {
+    if (!window.confirm(`Delete category "${cat.name}"?`)) return;
+
+    try {
+      await api(`/categories/${cat.id}`, { method: 'DELETE' });
+      setToast('Category deleted');
+      await loadAll();
+    } catch (err) {
+      setToast(err.message);
+    }
+  };
+
   const handleEditProduct = (p) => {
     setProductForm({
       id: p.id,
@@ -739,20 +757,6 @@ function AdminPage({ setToast }) {
               <button type="button" style={styles.pageButton} onClick={() => setProductForm(emptyProduct)}>Reset</button>
             </div>
           </form>
-
-          <hr style={{ margin: '20px 0' }} />
-
-          <h3>Categories</h3>
-          
-
-          <div style={{ marginTop: 10 }}>
-            {categories.map(c => (
-              <div key={c.id} style={{ background: '#fff', padding: '10px', borderRadius: 6, marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-                <span>{c.name}</span>
-                <span style={{ color: '#666', fontSize: 12 }}>{c.product_count} products</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>

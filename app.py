@@ -15,10 +15,11 @@ from flask_cors import CORS
 from models import db, Category, Product, Customer, Order, OrderItem, CartItem, Review
 from functools import wraps
 import os
-
+import time
+from datetime import datetime,timedelta
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
-
+CART_RESERVATION_MINUTES=15
 # database configuring
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
     'DATABASE_URL',
@@ -553,6 +554,7 @@ def checkout():
             errors.append(f'{item.product.name} is no longer available')
         elif item.reserved_quantity < item.quantity:
             # Some reservation expired, check if stock available
+            errors.append(f"Reservation expired")
             needed = item.quantity - item.reserved_quantity
             if item.product.stock < needed:
                 errors.append(
