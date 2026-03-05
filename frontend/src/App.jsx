@@ -10,6 +10,7 @@ export const useApp = () => useContext(AppContext);
 
 const API_BASE = '/flask/api';
 
+
 // ============================================================================
 // API Helper Functions
 // ============================================================================
@@ -113,9 +114,11 @@ function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) 
 }
 
 // Product Card Component
-function ProductCard({ product, onAddToCart }) {
+function ProductCard({ product, onAddToCart, setCurrentPage, openProduct }) {
   const [adding, setAdding] = useState(false);
-  
+
+  //const[setSelectedProductId, setCurrentPage] = openProduct;
+
   const handleAdd = async () => {
     setAdding(true);
     await onAddToCart(product);
@@ -135,7 +138,14 @@ function ProductCard({ product, onAddToCart }) {
       </div>
       
       <div style={styles.productInfo}>
-        <button> <h3> style={styles.productName}{product.name}</h3> onClick=</button>
+
+        <button
+          style={styles.productName}
+          onClick={() => openProduct(product.id)}
+        >
+          {product.name}
+        </button>
+
         <p style={styles.productCategory}>{product.category_name || 'Other'}</p>
         <p style={styles.productBarcode}>#{product.barcode}</p>
         
@@ -179,7 +189,7 @@ function ProductCard({ product, onAddToCart }) {
 }
 
 // Products Page
-function ProductsPage({ onAddToCart }) {
+function ProductsPage({ onAddToCart, openProduct }) {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -270,10 +280,11 @@ function ProductsPage({ onAddToCart }) {
         <>
           <div style={styles.productsGrid}>
             {products.map(product => (
-              <ProductCard 
-                key={product.id} 
-                product={product} 
+              <ProductCard
+                key={product.id}
+                product={product}
                 onAddToCart={onAddToCart}
+                openProduct={openProduct}
               />
             ))}
           </div>
@@ -891,7 +902,12 @@ export default function App() {
   const [customer, setCustomer] = useState(null);
   const [cart, setCart] = useState({ items: [], total: 0, total_kr: 0, item_count: 0 });
   const [toast, setToast] = useState(null);
-  
+  const [selectedProductId, setSelectedProductId] = useState(null);
+
+  const openProduct = (id) => {
+    setSelectedProductId(id);
+    setCurrentPage("product");
+  };
   // Load saved session on mount
   useEffect(() => {
     const savedCustomerId = localStorage.getItem('customerId');
@@ -1004,7 +1020,10 @@ export default function App() {
       
       <main style={styles.main}>
         {currentPage === 'products' && (
-          <ProductsPage onAddToCart={handleAddToCart} />
+          <ProductsPage 
+            onAddToCart={handleAddToCart}
+            openProduct={openProduct}
+          />
         )}
         
         {currentPage === 'cart' && (
@@ -1030,12 +1049,130 @@ export default function App() {
         {currentPage === 'login' && (
           <AuthPage onLogin={handleLogin} setCurrentPage={setCurrentPage} />
         )}
+
+        {currentPage === 'product' && (
+          <ProductPage
+            productId={selectedProductId}
+            onAddToCart={handleAddToCart}
+          />
+        )} 
       </main>
       
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
     </div>
   );
 }
+
+function ProductPage({ productId, onAddToCart }) {
+  const [product, setProduct] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [loading, setLoading] = useState(true);
+
+
+  useEffect(() => {
+    loadProduct();
+    loadReviews();
+  }, [productId]);
+
+  const loadProduct = async () => {
+    const data = await api(`/products/${productId}`);
+    setProduct(data.data);
+    setLoading(false);
+  };
+
+  const loadReviews = async () => {
+    const data = await api(`/products/${productId}/reviews`);
+    setReviews(data.data);
+  };
+
+  const submitReview = async () => {
+    try {
+      await api(`/products/${productId}/reviews`, {
+        method: 'POST',
+        body: {
+          rating,
+          comment
+        }
+      });
+
+      setComment('');
+      loadReviews();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  if (loading || !product) return <div>Loading...</div>;
+
+  return (
+    <div style={styles.page}>
+      <div style={styles.productPage}>
+        <h2>{product.name}</h2>
+
+        <p>Barcode: {product.barcode}</p>
+        <p>Price: {(product.price / 100).toFixed(2)} kr</p>
+        <p>Stock: {product.stock}</p>
+
+        <button
+          style={styles.addButton}
+          onClick={() => onAddToCart(product)}
+        >
+          Add to Cart
+        </button>
+
+        {product.average_rating && (
+          <p>
+            Rating: {'⭐'.repeat(Math.round(product.average_rating))}
+            ({product.review_count})
+          </p>
+        )}
+      </div>
+
+      {/* Reviews */}
+      <div style={styles.reviews}>
+        <h3>Reviews</h3>
+
+        {reviews.map(r => (
+          <div key={r.id} style={styles.review}>
+            <strong>{'⭐'.repeat(r.rating)}</strong>
+            <p>{r.comment}</p>
+          </div>
+        ))}
+
+        {reviews.length === 0 && <p>No reviews yet.</p>}
+
+        {/* Write Review */}
+        <div style={styles.reviewForm}>
+          <h4>Write Review</h4>
+
+          <select
+            value={rating}
+            onChange={(e) => setRating(Number(e.target.value))}
+          >
+            <option value={5}>5 ⭐</option>
+            <option value={4}>4 ⭐</option>
+            <option value={3}>3 ⭐</option>
+            <option value={2}>2 ⭐</option>
+            <option value={1}>1 ⭐</option>
+          </select>
+
+          <textarea
+            placeholder="Write your review..."
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+          />
+
+          <button onClick={submitReview}>
+            Submit Review
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // ============================================================================
 // STYLES
@@ -1595,4 +1732,22 @@ const styles = {
     padding: '40px',
     color: '#999',
   },
+  productPage: {
+  marginBottom: 40
+  },
+  reviews: {
+    marginTop: 30
+  },
+
+  review: {
+    borderBottom: "1px solid #ddd",
+    padding: "10px 0"
+  },
+
+  reviewForm: {
+    marginTop: 20,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10
+  }
 };
