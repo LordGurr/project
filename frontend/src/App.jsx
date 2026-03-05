@@ -72,12 +72,12 @@ function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) 
               My Orders
             </button>
           )}
-          {customer && customer.email && customer.role > 0 && (
+          {customer && customer.role > 0 && (
             <button
               style={currentPage === 'admin' ? styles.navButtonActive : styles.navButton}
               onClick={() => setCurrentPage('admin')}
             >
-              Admin
+              🛡️ Admin
             </button>
           )}
         </nav>
@@ -85,7 +85,10 @@ function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) 
         <div style={styles.headerRight}>
           {customer ? (
             <div style={styles.userInfo}>
-              <span style={styles.userName}>{customer.first_name || customer.email}</span>
+              <span style={styles.userName}>
+                {customer.first_name || customer.email}
+                {customer.role > 0 && <span style={styles.adminBadge}>ADMIN</span>}
+              </span>
               <button style={styles.logoutButton} onClick={onLogout}>Logout</button>
             </div>
           ) : (
@@ -135,6 +138,15 @@ function ProductCard({ product, onAddToCart }) {
         <h3 style={styles.productName}>{product.name}</h3>
         <p style={styles.productCategory}>{product.category_name || 'Other'}</p>
         <p style={styles.productBarcode}>#{product.barcode}</p>
+        
+        <div style={styles.stockInfo}>
+          <span style={inStock ? styles.inStock : styles.outOfStock}>
+            {inStock ? `${product.stock} available` : 'Out of stock'}
+          </span>
+          {product.reserved_stock > 0 && (
+            <span style={styles.reservedStock}> ({product.reserved_stock} reserved)</span>
+          )}
+        </div>
         
         <div style={styles.productFooter}>
           <span style={styles.productPrice}>{priceKr} kr</span>
@@ -297,7 +309,7 @@ function ProductsPage({ onAddToCart }) {
 }
 
 // Cart Page
-function CartPage({ cart, onUpdateQuantity, onRemove, onCheckout, customer, setCurrentPage }) {
+function CartPage({ cart, onUpdateQuantity, onRemove, onCheckout, onExtendReservation, customer, setCurrentPage }) {
   const [checking, setChecking] = useState(false);
   
   if (!customer) {
@@ -346,6 +358,13 @@ function CartPage({ cart, onUpdateQuantity, onRemove, onCheckout, customer, setC
     <div style={styles.page}>
       <h2 style={styles.pageTitle}>Shopping Cart</h2>
       
+      <div style={styles.reservationBanner}>
+        <span>⏱️ Items reserved for {cart.reservation_minutes || 15} minutes</span>
+        <button style={styles.extendButton} onClick={onExtendReservation}>
+          Extend Reservation
+        </button>
+      </div>
+      
       <div style={styles.cartContainer}>
         <div style={styles.cartItems}>
           {cart.items.map(item => (
@@ -355,6 +374,13 @@ function CartPage({ cart, onUpdateQuantity, onRemove, onCheckout, customer, setC
                 <p style={styles.cartItemPrice}>
                   {(item.product.price / 100).toFixed(2)} kr each
                 </p>
+                {item.is_reserved ? (
+                  <p style={styles.reservedLabel}>
+                    ✓ Reserved until {new Date(item.reserved_until).toLocaleTimeString()}
+                  </p>
+                ) : (
+                  <p style={styles.expiredLabel}>⚠️ Reservation expired</p>
+                )}
               </div>
               
               <div style={styles.cartItemControls}>
@@ -519,7 +545,7 @@ function AdminPage({ setToast }) {
     e.preventDefault();
     if (!categoryName) return;
     try {
-      await api('/categories', { method: 'POST', body: { name: categoryName, description: 'Test category' } });
+      await api('/categories', { method: 'POST', body: { name: categoryName, description: 'Category' } });
       setCategoryName('');
       setToast('Category created');
       await loadAll();
@@ -582,7 +608,6 @@ function AdminPage({ setToast }) {
         stock: parseInt(productForm.stock || 0, 10),
         category_id: productForm.category_id || null,
         active: productForm.active,
-        image_url: 'https://ludd.ltu.se/~lordgurr/M%C3%A4rkesSida/NewCompressed/allvar.jpg',
       };
 
       if (productForm.id) {
@@ -604,13 +629,16 @@ function AdminPage({ setToast }) {
 
   return (
     <div style={styles.page}>
-      <h2 style={styles.pageTitle}>Admin - Products & Categories</h2>
+      <h2 style={styles.pageTitle}>🛡️ Admin - Products & Categories</h2>
 
       <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
           <div style={{ marginBottom: 40 }}>
           <h3>Categories</h3>
-
+          <form onSubmit={handleCreateCategory} style={{ display: 'flex', gap: '8px' }}>
+            <input style={styles.input} placeholder="Category name" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
+            <button type="submit" style={styles.primaryButton}>Create</button>
+          </form>
           {categories.map(cat => (
             <div key={cat.id} style={{
               display: 'flex',
@@ -678,9 +706,10 @@ function AdminPage({ setToast }) {
           <h3>Products</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {products.map(p => (
-              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '10px', borderRadius: 8 }}>
+              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', padding: '12px', borderRadius: 8, alignItems: 'center' }}>
                 <div>
-                  <strong>{p.name}</strong> <div style={{ fontSize: 12, color: '#666' }}>{p.barcode} • {p.category_name || '—'}</div>
+                  <strong>{p.name}</strong>
+                  <div style={{ fontSize: 12, color: '#666' }}>{p.barcode} • {p.category_name || '—'} • {(p.price/100).toFixed(2)} kr • Stock: {p.stock}</div>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button style={styles.pageButton} onClick={() => handleEditProduct(p)}>Edit</button>
@@ -693,13 +722,13 @@ function AdminPage({ setToast }) {
 
         <div style={{ width: 380 }}>
           <h3 style={{ marginTop: 0 }}>{productForm.id ? 'Edit Product' : 'New Product'}</h3>
-          <form onSubmit={handleProductSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <form onSubmit={handleProductSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: '#fff', padding: '20px', borderRadius: 8 }}>
             <input style={styles.input} placeholder="Name" value={productForm.name} onChange={(e) => setProductForm({...productForm, name: e.target.value})} required />
             <input style={styles.input} placeholder="Barcode" value={productForm.barcode} onChange={(e) => setProductForm({...productForm, barcode: e.target.value})} required />
-            <input style={styles.input} placeholder="Price (kr)" type="number" value={productForm.price} onChange={(e) => setProductForm({...productForm, price: e.target.value})} required />
+            <input style={styles.input} placeholder="Price (kr)" type="number" step="0.01" value={productForm.price} onChange={(e) => setProductForm({...productForm, price: e.target.value})} required />
             <input style={styles.input} placeholder="Stock" type="number" value={productForm.stock} onChange={(e) => setProductForm({...productForm, stock: e.target.value})} />
             <select style={styles.select} value={productForm.category_id || ''} onChange={(e) => setProductForm({...productForm, category_id: e.target.value})}>
-              <option value="">Uncategorized</option>
+              <option value="">No category</option>
               {categories.map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -707,21 +736,21 @@ function AdminPage({ setToast }) {
             <label style={styles.checkbox}><input type="checkbox" checked={productForm.active} onChange={(e) => setProductForm({...productForm, active: e.target.checked})} /> Active</label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button type="submit" style={styles.primaryButton}>{productForm.id ? 'Save' : 'Create'}</button>
-              <button type="button" style={{ ...styles.pageButton }} onClick={() => setProductForm(emptyProduct)}>Reset</button>
+              <button type="button" style={styles.pageButton} onClick={() => setProductForm(emptyProduct)}>Reset</button>
             </div>
           </form>
 
           <hr style={{ margin: '20px 0' }} />
 
           <h3>Categories</h3>
-          <form onSubmit={handleCreateCategory} style={{ display: 'flex', gap: '8px' }}>
-            <input style={styles.input} placeholder="Category name" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
-            <button type="submit" style={styles.primaryButton}>Create</button>
-          </form>
+          
 
           <div style={{ marginTop: 10 }}>
             {categories.map(c => (
-              <div key={c.id} style={{ background: '#fff', padding: '8px', borderRadius: 6, marginBottom: 6 }}>{c.name}</div>
+              <div key={c.id} style={{ background: '#fff', padding: '10px', borderRadius: 6, marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
+                <span>{c.name}</span>
+                <span style={{ color: '#666', fontSize: 12 }}>{c.product_count} products</span>
+              </div>
             ))}
           </div>
         </div>
@@ -949,6 +978,16 @@ export default function App() {
     }
   };
   
+  const handleExtendReservation = async () => {
+    try {
+      await api('/cart/extend', { method: 'POST' });
+      await loadCart();
+      setToast('Reservations extended! ⏱️');
+    } catch (err) {
+      setToast(err.message);
+    }
+  };
+  
   return (
     <div style={styles.app}>
       <Header
@@ -970,6 +1009,7 @@ export default function App() {
             onUpdateQuantity={handleUpdateQuantity}
             onRemove={handleRemoveFromCart}
             onCheckout={handleCheckout}
+            onExtendReservation={handleExtendReservation}
             customer={customer}
             setCurrentPage={setCurrentPage}
           />
@@ -1062,6 +1102,17 @@ const styles = {
   },
   userName: {
     fontSize: '14px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  adminBadge: {
+    backgroundColor: '#4CAF50',
+    color: 'white',
+    padding: '2px 8px',
+    borderRadius: '4px',
+    fontSize: '10px',
+    fontWeight: 'bold',
   },
   loginButton: {
     background: '#4CAF50',
@@ -1193,6 +1244,19 @@ const styles = {
     color: '#aaa',
     margin: '0 0 10px 0',
   },
+  stockInfo: {
+    fontSize: '12px',
+    marginBottom: '10px',
+  },
+  inStock: {
+    color: '#4CAF50',
+  },
+  outOfStock: {
+    color: '#f44336',
+  },
+  reservedStock: {
+    color: '#ff9800',
+  },
   productFooter: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -1251,6 +1315,36 @@ const styles = {
   pageInfo: {
     fontSize: '14px',
     color: '#666',
+  },
+  
+  // Reservation
+  reservationBanner: {
+    backgroundColor: '#fff3e0',
+    padding: '12px 20px',
+    borderRadius: '8px',
+    marginBottom: '20px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  extendButton: {
+    backgroundColor: '#ff9800',
+    color: 'white',
+    border: 'none',
+    padding: '8px 16px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '14px',
+  },
+  reservedLabel: {
+    fontSize: '12px',
+    color: '#4CAF50',
+    margin: '5px 0 0 0',
+  },
+  expiredLabel: {
+    fontSize: '12px',
+    color: '#f44336',
+    margin: '5px 0 0 0',
   },
   
   // Cart

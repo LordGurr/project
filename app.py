@@ -9,7 +9,7 @@ Endpoints:
 - /api/reviews - Product reviews and ratings
 - /api/admin/* - admin panel for moderation
 """
-
+#
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from models import db, Category, Product, Customer, Order, OrderItem, CartItem, Review
@@ -62,6 +62,22 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def admin_required(f):
+    """Admin authentication decorator (role > 0)"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        customer_id = request.headers.get('X-Customer-ID')
+        if not customer_id:
+            return error_response('Authentication required', 401)
+        customer = Customer.query.get(customer_id)
+        if not customer:
+            return error_response('Invalid customer', 401)
+        if customer.role < 1:
+            return error_response('Admin access required', 403)
+        request.customer = customer
+        return f(*args, **kwargs)
+    return decorated_function
+
 # release expired reservation
 
 #  health check
@@ -69,7 +85,7 @@ def login_required(f):
 def index():
     return jsonify({
         'name': 'Bosch Food Store API',
-        'description': 'GUSTAV JUUL STORE',
+        'description': 'GUSTAV shit show STORE',
         'endpoints': [
             'GET /api/health',
             'GET/POST /api/categories',
@@ -113,40 +129,42 @@ def get_categories():
         result.append(data)
     return success_response(result)
 
-
+@admin_required
 @app.route('/api/categories', methods=['POST'])
 def create_category():
     """Create a new category"""
     data = request.get_json()
     if not data or not data.get('name'):
         return error_response('Category name is required')
-    
+
     if Category.query.filter_by(name=data['name']).first():
         return error_response('Category already exists')
-    
+
     category = Category(
         name=data['name'],
         description=data.get('description')
     )
     db.session.add(category)
     db.session.commit()
-    
+
     return success_response(category.to_dict(), 'Category created', 201)
 
+@admin_required
 @app.route('/api/categories/<int:category_id>', methods=['PUT'])
 def update_category(category_id):
     """Update a category"""
     category = Category.query.get_or_404(category_id)
     data = request.get_json()
-    
+
     # update fields
     for field in ['name', 'description']:
         if field in data:
             setattr(category, field, data[field])
-    
+
     db.session.commit()
     return success_response(category.to_dict(), 'Category updated')
 
+@admin_required
 @app.route('/api/categories/<int:category_id>', methods=['DELETE'])
 def delete_category(category_id):
     """Delete a category"""
@@ -178,45 +196,45 @@ def get_products():
     Query params: category_id, active, in_stock, min_price, max_price, search, barcode
     """
     query = Product.query
-    
+
     # apply filters
     if request.args.get('category_id'):
         query = query.filter_by(category_id=request.args.get('category_id', type=int))
-    
+
     if request.args.get('active') is not None:
         active = request.args.get('active').lower() == 'true'
         query = query.filter_by(active=active)
-    
+
     if request.args.get('in_stock') == 'true':
         query = query.filter(Product.stock > 0)
-    
+
     if request.args.get('min_price'):
         query = query.filter(Product.price >= request.args.get('min_price', type=int))
-    
+
     if request.args.get('max_price'):
         query = query.filter(Product.price <= request.args.get('max_price', type=int))
-    
+
     # search name
     if request.args.get('search'):
         search = f"%{request.args.get('search')}%"
         query = query.filter(Product.name.ilike(search))
-    
+
     # search barcode
     if request.args.get('barcode'):
         barcode = f"%{request.args.get('barcode')}%"
         query = query.filter(Product.barcode.ilike(barcode))
-    
+
     # pagies with max 200 per page
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
-    per_page = min(per_page, 200) 
-    
+    per_page = min(per_page, 200)
+
     # order by name
     query = query.order_by(Product.name)
-    
+
     # page results
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-    
+
     return success_response({
         'products': [p.to_dict() for p in pagination.items],
         'total': pagination.total,
@@ -241,12 +259,12 @@ def get_product_by_barcode(barcode):
         return error_response('Product not found', 404)
     return success_response(product.to_dict(include_reviews=True))
 
-
+@admin_required
 @app.route('/api/products', methods=['POST'])
 def create_product():
     """Create a new product"""
     data = request.get_json()
-    
+
     required_fields = ['name', 'barcode', 'price']
     for field in required_fields:
         if field not in data:
@@ -254,7 +272,7 @@ def create_product():
     product = Product(
         name=data['name'],
         barcode=data['barcode'],
-        price=data['price'],  
+        price=data['price'],
         stock=data.get('stock', 0),
         active=data.get('active', True),
         category_id=data.get('category_id'),
@@ -262,7 +280,7 @@ def create_product():
     )
     db.session.add(product)
     db.session.commit()
-    
+
     return success_response(product.to_dict(), 'Product created', 201)
 
 
@@ -271,12 +289,12 @@ def update_product(product_id):
     """Update a product"""
     product = Product.query.get_or_404(product_id)
     data = request.get_json()
-    
+
     # update fields
     for field in ['name', 'barcode', 'price', 'stock', 'active', 'category_id', 'image_url']:
         if field in data:
             setattr(product, field, data[field])
-    
+
     db.session.commit()
     return success_response(product.to_dict(), 'Product updated')
 
@@ -285,13 +303,13 @@ def update_product(product_id):
 def delete_product(product_id):
     """Delete a product (or set inactive)"""
     product = Product.query.get_or_404(product_id)
-    
+
     # soft deletion
     if request.args.get('hard') == 'true':
         db.session.delete(product)
     else:
         product.active = False
-    
+
     db.session.commit()
     return success_response(None, 'Product deleted')
 
@@ -300,18 +318,18 @@ def delete_product(product_id):
 def bulk_create_products():
     """Bulk create/update products from JSON array"""
     data = request.get_json()
-    
+
     if not data or not isinstance(data.get('products'), list):
         return error_response('products array is required')
-    
+
     created = 0
     updated = 0
     errors = []
-    
+
     for item in data['products']:
         try:
             existing = Product.query.filter_by(barcode=item.get('barcode')).first()
-            
+
             if existing:
                 # Update existing
                 existing.name = item.get('name', existing.name)
@@ -333,9 +351,9 @@ def bulk_create_products():
                 created += 1
         except Exception as e:
             errors.append({'barcode': item.get('barcode'), 'error': str(e)})
-    
+
     db.session.commit()
-    
+
     return success_response({
         'created': created,
         'updated': updated,
@@ -348,13 +366,13 @@ def bulk_create_products():
 def register_customer():
     """Register a new customer"""
     data = request.get_json()
-    
+
     if not data.get('email') or not data.get('password'):
         return error_response('Email and password are required')
-    
+
     if Customer.query.filter_by(email=data['email']).first():
         return error_response('Email already registered')
-    
+
     customer = Customer(
         email=data['email'],
         first_name=data.get('first_name'),
@@ -363,10 +381,10 @@ def register_customer():
         phone=data.get('phone')
     )
     customer.set_password(data['password'])
-    
+
     db.session.add(customer)
     db.session.commit()
-    
+
     return success_response(customer.to_dict(), 'Registration successful', 201)
 
 
@@ -374,12 +392,12 @@ def register_customer():
 def login_customer():
     """Login"""
     data = request.get_json()
-    
-    if not data.get('email') or not data.get('password'):
-        return error_response('Email and password are required')
-    
+
+    # if not data.get('email') or not data.get('password'):
+        #return error_response('Email and password are required')
+
     customer = Customer.query.filter_by(email=data['email']).first()
-    
+
     if not customer or not customer.check_password(data['password']):
         return error_response('Invalid email or password', 401)
     return success_response({
@@ -395,6 +413,7 @@ def get_current_customer():
     return success_response(request.customer.to_dict())
 
 
+
 # shopping cart
 @app.route('/api/cart', methods=['GET'])
 @login_required
@@ -402,7 +421,7 @@ def get_cart():
     """Get current customer's cart"""
     cart_items = CartItem.query.filter_by(customer_id=request.customer.id).all()
     total = sum(item.product.price * item.quantity for item in cart_items if item.product)
-    
+
     return success_response({
         'items': [item.to_dict() for item in cart_items],
         'total': total,
@@ -418,28 +437,28 @@ def add_to_cart():
     Add item to cart by product_id or barcode NOTE: not reserved just reserved on checkout
     """
     data = request.get_json()
-    
+
     # Find product by ID or barcode
     product = None
     if data.get('product_id'):
         product = Product.query.get(data['product_id'])
     elif data.get('barcode'):
         product = Product.query.filter_by(barcode=data['barcode']).first()
-    
+
     if not product:
         return error_response('Product not found', 404)
-    
+
     if not product.active:
         return error_response('Product is not available')
-    
+
     quantity = data.get('quantity', 1)
-    
+
     # Check if item already in cart
     cart_item = CartItem.query.filter_by(
         customer_id=request.customer.id,
         product_id=product.id
     ).first()
-    
+
     if cart_item:
         cart_item.quantity += quantity
     else:
@@ -449,7 +468,7 @@ def add_to_cart():
             quantity=quantity
         )
         db.session.add(cart_item)
-    
+
     db.session.commit()
     return success_response(cart_item.to_dict(), 'Added to cart')
 
@@ -462,15 +481,15 @@ def update_cart_item(item_id):
         id=item_id,
         customer_id=request.customer.id
     ).first_or_404()
-    
+
     data = request.get_json()
     quantity = data.get('quantity', 1)
-    
+
     if quantity <= 0:
         db.session.delete(cart_item)
         db.session.commit()
         return success_response(None, 'Item removed from cart')
-    
+
     cart_item.quantity = quantity
     db.session.commit()
     return success_response(cart_item.to_dict(), 'Cart updated')
@@ -484,7 +503,7 @@ def remove_from_cart(item_id):
         id=item_id,
         customer_id=request.customer.id
     ).first_or_404()
-    
+
     db.session.delete(cart_item)
     db.session.commit()
     return success_response(None, 'Item removed from cart')
@@ -493,44 +512,63 @@ def remove_from_cart(item_id):
 @app.route('/api/cart/clear', methods=['DELETE'])
 @login_required
 def clear_cart():
-    """Clear all items from cart"""
-    CartItem.query.filter_by(customer_id=request.customer.id).delete()
+    """Clear cart and release all reservations"""
+    cart_items = CartItem.query.filter_by(customer_id=request.customer.id).all()
+
+    for item in cart_items:
+        if item.product and item.reserved_quantity > 0:
+            item.product.release_stock(item.reserved_quantity)
+        db.session.delete(item)
+
     db.session.commit()
-    return success_response(None, 'Cart cleared')
+    return success_response(None, 'Cart cleared, all stock released')
 
+@app.route('/api/cart/extend', methods=['POST'])
+@login_required
+def extend_reservations():
+    """Extend all cart reservations"""
+    cart_items = CartItem.query.filter_by(customer_id=request.customer.id).all()
 
+    for item in cart_items:
+        item.reserved_until = datetime.utcnow() + timedelta(minutes=CART_RESERVATION_MINUTES)
+
+    db.session.commit()
+    return success_response({
+        'items_extended': len(cart_items),
+        'new_expiry': (datetime.utcnow() + timedelta(minutes=CART_RESERVATION_MINUTES)).isoformat()
+    })
 @app.route('/api/cart/checkout', methods=['POST'])
 @login_required
 def checkout():
-    """
-    Convert cart to order
-    """
+    """Convert cart to order - confirms reserved stock"""
     cart_items = CartItem.query.filter_by(customer_id=request.customer.id).all()
-    
+
     if not cart_items:
         return error_response('Cart is empty')
-    
-    # Verify stock availability for all items
-    stock_errors = []
+
+    # Verify all items still have valid reservations or available stock
+    errors = []
     for item in cart_items:
         if not item.product.active:
-            stock_errors.append(f'{item.product.name} is no longer available')
-        elif item.product.stock < item.quantity:
-            stock_errors.append(
-                f'Insufficient stock for {item.product.name}. '
-                f'Available: {item.product.stock}, Requested: {item.quantity}'
-            )
-    
-    if stock_errors:
-        return error_response(stock_errors, 400)
-    
+            errors.append(f'{item.product.name} is no longer available')
+        elif item.reserved_quantity < item.quantity:
+            # Some reservation expired, check if stock available
+            needed = item.quantity - item.reserved_quantity
+            if item.product.stock < needed:
+                errors.append(
+                    f'{item.product.name}: reservation expired, only {item.product.stock + item.reserved_quantity} available'
+                )
+
+    if errors:
+        return error_response(errors, 400)
+
     # Calculate total
     total = sum(item.product.price * item.quantity for item in cart_items)
-    
+
     # Get shipping address from request or use customer's default
     data = request.get_json() or {}
     shipping_address = data.get('shipping_address') or request.customer.address
-    
+
     # Create order
     order = Order(
         customer_id=request.customer.id,
@@ -540,8 +578,8 @@ def checkout():
     )
     db.session.add(order)
     db.session.flush()  # Get order ID
-    
-    # Create order items and decrement stock
+
+    # Create order items and confirm reservations
     for cart_item in cart_items:
         order_item = OrderItem(
             order_id=order.id,
@@ -550,15 +588,20 @@ def checkout():
             price_at_purchase=cart_item.product.price
         )
         db.session.add(order_item)
-        
-        # Decrement stock
-        cart_item.product.stock -= cart_item.quantity
-        
+
+        # Confirm the reservation (removes from reserved_stock)
+        cart_item.product.confirm_reservation(cart_item.reserved_quantity)
+
+        # If we need more than reserved (reservation partially expired)
+        extra_needed = cart_item.quantity - cart_item.reserved_quantity
+        if extra_needed > 0:
+            cart_item.product.stock -= extra_needed
+
         # Remove from cart
         db.session.delete(cart_item)
-    
+
     db.session.commit()
-    
+
     return success_response(order.to_dict(), 'Order placed successfully', 201)
 
 
@@ -600,14 +643,14 @@ def create_review(product_id):
     """Create a review for a product"""
     product = Product.query.get_or_404(product_id)
     data = request.get_json()
-    
+
     if not data.get('rating'):
         return error_response('Rating is required')
-    
+
     rating = data['rating']
     if not isinstance(rating, int) or rating < 1 or rating > 5:
         return error_response('Rating must be an integer between 1 and 5')
-    
+
     # check if review has already been done
     if not data.get('parent_id'):
         existing = Review.query.filter_by(
@@ -617,7 +660,7 @@ def create_review(product_id):
         ).first()
         if existing:
             return error_response('You have already reviewed this product')
-    
+
     review = Review(
         product_id=product_id,
         customer_id=request.customer.id,
@@ -628,10 +671,52 @@ def create_review(product_id):
     )
     db.session.add(review)
     db.session.commit()
-    
+
     return success_response(review.to_dict(), 'Review submitted', 201)
 
+#admin
 
+@app.route('/api/admin/reviews', methods=['GET'])
+@admin_required
+def admin_get_reviews():
+    """Get all reviews for moderation"""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+
+    query = Review.query.order_by(Review.created_at.desc())
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+    reviews = []
+    for r in pagination.items:
+        data = r.to_dict(include_replies=False)
+        data['product_name'] = r.product.name if r.product else None
+        data['customer_email'] = r.customer.email if r.customer else None
+        reviews.append(data)
+
+    return success_response({
+        'reviews': reviews,
+        'total': pagination.total,
+        'page': page,
+        'pages': pagination.pages
+    })
+
+
+@app.route('/api/admin/reviews/<int:review_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_review(review_id):
+    """Delete a review (admin only)"""
+    review = Review.query.get_or_404(review_id)
+    db.session.delete(review)
+    db.session.commit()
+    return success_response(None, 'Review deleted')
+
+
+@app.route('/api/admin/customers', methods=['GET'])
+@admin_required
+def admin_get_customers():
+    """Get all customers (admin only)"""
+    customers = Customer.query.order_by(Customer.created_at.desc()).all()
+    return success_response([c.to_dict() for c in customers])
 # error handling
 @app.errorhandler(404)
 def not_found(e):
@@ -640,7 +725,7 @@ def not_found(e):
 
 @app.errorhandler(500)
 def server_error(e):
-    return error_response('Internal server error', 500)
+    return error_response(f'Internal server error: {e}', 500)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

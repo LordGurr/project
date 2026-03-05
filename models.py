@@ -1,8 +1,11 @@
 """
+Database models for Bosch Food/Snack Store
+D0018E Lab Assignment - Flask + MariaDB + React
+
 Tables:
 - Category: Product categories (e.g., Candy, Drinks, Frozen Food)
 - Product: Food items with stock tracking and barcode
-- Customer: User accounts
+- Customer: User accounts (role: 0=user, 1=admin, 2=system)
 - Order: Customer orders
 - OrderItem: Individual items in an order (many-to-many)
 - CartItem: Shopping basket items
@@ -43,8 +46,9 @@ class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     barcode = db.Column(db.String(100), unique=True, nullable=False)
-    price = db.Column(db.Integer, db.CheckConstraint('price >= 0'), nullable=False)  # Price in öre (cents), e.g., 1000 = 10.00 kr
-    stock = db.Column(db.Integer, db.CheckConstraint('stock >= 0'), default=0)
+    price = db.Column(db.Integer, db.CheckConstraint('price >= 0'), nullable=False)  # Price in öre (cents)
+    stock = db.Column(db.Integer, db.CheckConstraint('stock >= 0'), default=0)  # Available stock
+    reserved_stock = db.Column(db.Integer, default=0)  # Stock reserved in carts
     active = db.Column(db.Boolean, default=True)
     category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
     image_url = db.Column(db.String(500))
@@ -63,7 +67,9 @@ class Product(db.Model):
             'barcode': self.barcode,
             'price': self.price,  # In öre
             'price_kr': self.price / 100,  # Converted to kronor for display
-            'stock': self.stock,
+            'stock': self.stock,  # Available stock
+            'reserved_stock': self.reserved_stock,  # Reserved in carts
+            'total_stock': self.stock + self.reserved_stock,  # Total inventory
             'active': self.active,
             'category_id': self.category_id,
             'category_name': self.category.name if self.category else None,
@@ -84,20 +90,35 @@ class Product(db.Model):
     @property
     def in_stock(self):
         return self.stock > 0
+    
+    def reserve_stock(self, quantity):
+        if self.stock >= quantity:
+            self.stock -= quantity
+            self.reserved_stock += quantity
+            return True
+        return False
+    
+    def release_stock(self, quantity):
+        release_qty = min(quantity, self.reserved_stock)
+        self.reserved_stock -= release_qty
+        self.stock += release_qty
+    
+    def confirm_reservation(self, quantity):
+        confirm_qty = min(quantity, self.reserved_stock)
+        self.reserved_stock -= confirm_qty
 
 
 class Customer(db.Model):
-    """Customer accounts"""
     __tablename__ = 'customers'
     
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(255), nullable=False, unique=True)
-    password_hash = db.Column(db.String(255), nullable=False)
-    first_name = db.Column(db.String(100))
-    last_name = db.Column(db.String(100))
+    email = db.Column(db.String(267), nullable=False, unique=True)
+    password_hash = db.Column(db.String(267), nullable=False)
+    first_name = db.Column(db.String(167))
+    last_name = db.Column(db.String(167))
     address = db.Column(db.Text)
-    phone = db.Column(db.String(20))
-    role = db.Column(db.Integer, default=0) # 0:user, 1: admin, 2: system
+    phone = db.Column(db.String(67))
+    role = db.Column(db.Integer, default=0)  # 0: user, 1: admin, 2: system
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
@@ -110,6 +131,10 @@ class Customer(db.Model):
     
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+    
+    @property
+    def is_admin(self):
+        return self.role > 0
     
     def to_dict(self):
         return {
@@ -129,7 +154,7 @@ class Order(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False)
-    status = db.Column(db.String(50), default='pending')  # pending, confirmed, shipped, delivered, cancelled
+    status = db.Column(db.String(67), default='pending')  # pending, confirmed, shipped, delivered, cancelled
     total_amount = db.Column(db.Integer, nullable=False)  # In öre
     shipping_address = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -186,10 +211,19 @@ class CartItem(db.Model):
     customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
     quantity = db.Column(db.Integer, nullable=False, default=1)
+    reserved_quantity = db.Column(db.Integer, default=0)  # How much stock is dreservd
     added_at = db.Column(db.DateTime, default=datetime.utcnow)
+    reserved_until = db.Column(db.DateTime)  # reservation esxpiratiton
     
     # Unique constraint: one product per customer in cart
     __table_args__ = (db.UniqueConstraint('customer_id', 'product_id', name='unique_cart_item'),)
+    
+    @property
+    def is_reservation_valid(self):
+        """Check if reservation is still valid"""
+        if not self.reserved_until:
+            return False
+        return datetime.utcnow() < self.reserved_until
     
     def to_dict(self):
         return {
@@ -197,6 +231,9 @@ class CartItem(db.Model):
             'product_id': self.product_id,
             'product': self.product.to_dict() if self.product else None,
             'quantity': self.quantity,
+            'reserved_quantity': self.reserved_quantity,
+            'is_reserved': self.is_reservation_valid,
+            'reserved_until': self.reserved_until.isoformat() if self.reserved_until else None,
             'subtotal': (self.product.price * self.quantity) if self.product else 0,
             'subtotal_kr': (self.product.price * self.quantity) / 100 if self.product else 0
         }
@@ -210,7 +247,7 @@ class Review(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
     customer_id = db.Column(db.Integer, db.ForeignKey('customers.id'), nullable=False)
     rating = db.Column(db.Integer, nullable=False)  # 1-5 stars
-    title = db.Column(db.String(200))
+    title = db.Column(db.String(267))
     comment = db.Column(db.Text)
     parent_id = db.Column(db.Integer, db.ForeignKey('reviews.id'))  # For reply threads
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
