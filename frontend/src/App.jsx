@@ -1070,6 +1070,9 @@ function ProductPage({ productId, onAddToCart , customer}) {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(true);
+  const [title, setTitle] = useState('');
+
+
 
   useEffect(() => {
     loadProduct();
@@ -1096,11 +1099,13 @@ function ProductPage({ productId, onAddToCart , customer}) {
         method: 'POST',
         body: {
           rating,
+          title,
           comment
         }
       });
 
       setComment('');
+      setTitle('');
       loadReviews();
     } catch (err) {
       alert(err.message);
@@ -1148,20 +1153,50 @@ function ProductPage({ productId, onAddToCart , customer}) {
       <div style={styles.reviews}>
         <h3>Reviews</h3>
 
-        {reviews.map(r => (
-          <div key={r.id} style={styles.review}>
-            <strong>{'⭐'.repeat(r.rating)}</strong>
-            <p>{r.comment}</p>
+        {reviews.map(r => {
+          const rating = r.rating;
+          const maxStars = 5;
+
+          return (
+            <div key={r.id} style={styles.review}>
+              <div style={styles.reviewHeader}>
+                <h4 style={styles.reviewTitle}>{r.title}</h4>
+                <span style={styles.reviewDate}>
+                  {new Date(r.created_at).toLocaleDateString()}
+                </span>
+              </div>
+
+              <div style={styles.reviewMeta}>
+                <strong>{r.customer_name}</strong>
+
+                <div style={styles.stars}>
+                  {[...Array(maxStars)].map((_, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        color: i < rating ? '#f5c518' : '#d3d3d3',
+                        fontSize: '18px'
+                      }}
+                    >
+                      ★
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <p style={styles.reviewComment}>{r.comment}</p>
+
               {customer && customer.role > 0 && (
-              <button
-                style={styles.deleteReviewButton}
-                onClick={() => handleDelete(r.id)}
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        ))}
+                <button
+                  style={styles.deleteReviewButton}
+                  onClick={() => handleDelete(r.id)}
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          );
+        })}
 
         {reviews.length === 0 && <p>No reviews yet.</p>}
 
@@ -1179,6 +1214,12 @@ function ProductPage({ productId, onAddToCart , customer}) {
             <option value={2}>2 ⭐</option>
             <option value={1}>1 ⭐</option>
           </select>
+
+          <textarea
+            placeholder="Write your title..."
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
 
           <textarea
             placeholder="Write your review..."
@@ -1761,15 +1802,50 @@ const styles = {
     marginTop: 30
   },
 
-  review: {
-    borderBottom: "1px solid #ddd",
-    padding: "10px 0"
-  },
-
   reviewForm: {
     marginTop: 20,
     display: "flex",
     flexDirection: "column",
     gap: 10
+  },
+  review: {
+    border: "1px solid #e5e5e5",
+    borderRadius: "10px",
+    padding: "16px",
+    marginBottom: "16px",
+    backgroundColor: "#fff",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.05)"
+  },
+
+  reviewHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "6px"
+  },
+
+  reviewTitle: {
+    margin: 0
+  },
+
+  reviewDate: {
+    fontSize: "12px",
+    color: "#888"
+  },
+
+  reviewMeta: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "8px"
+  },
+
+  stars: {
+    letterSpacing: "2px"
+  },
+
+  reviewComment: {
+    marginTop: "8px",
+    lineHeight: "1.4"
   }
 };
