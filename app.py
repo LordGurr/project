@@ -435,7 +435,7 @@ def get_cart():
 @login_required
 def add_to_cart():
     """
-    Add item to cart by product_id or barcode NOTE: not reserved just reserved on checkout
+    Add item to cart and immediately reserve stock.
     """
     data = request.get_json()
 
@@ -454,6 +454,14 @@ def add_to_cart():
 
     quantity = data.get('quantity', 1)
 
+    # Check if there is enough stock
+    if product.stock < quantity:
+        return error_response(f'Only {product.stock} items available', 400)
+
+    # Reserve stock
+    product.reserved_stock += quantity
+    product.stock -= quantity
+
     # Check if item already in cart
     cart_item = CartItem.query.filter_by(
         customer_id=request.customer.id,
@@ -462,36 +470,64 @@ def add_to_cart():
 
     if cart_item:
         cart_item.quantity += quantity
+        cart_item.reserved_until = datetime.utcnow() + timedelta(minutes=CART_RESERVATION_MINUTES)
     else:
         cart_item = CartItem(
             customer_id=request.customer.id,
             product_id=product.id,
-            quantity=quantity
+            quantity=quantity,
+            reserved_until=datetime.utcnow() + timedelta(minutes=CART_RESERVATION_MINUTES)
         )
         db.session.add(cart_item)
 
     db.session.commit()
-    return success_response(cart_item.to_dict(), 'Added to cart')
+
+    return success_response(cart_item.to_dict(), 'Added to cart and reserved')
 
 
 @app.route('/api/cart/<int:item_id>', methods=['PUT'])
 @login_required
 def update_cart_item(item_id):
-    """Update cart item quantity"""
+    """Update cart item quantity and adjust reservation"""
     cart_item = CartItem.query.filter_by(
         id=item_id,
         customer_id=request.customer.id
     ).first_or_404()
 
     data = request.get_json()
-    quantity = data.get('quantity', 1)
+    new_quantity = data.get('quantity', 1)
 
-    if quantity <= 0:
+    product = (
+        Product.query
+        .filter_by(id=cart_item.product_id)
+        .with_for_update()  # lock row for safe stock update
+        .first()
+    )
+
+    if new_quantity <= 0:
+        # Remove item and release reserved stock
+        product.stock += cart_item.quantity
+        product.reserved_stock -= cart_item.quantity
         db.session.delete(cart_item)
         db.session.commit()
         return success_response(None, 'Item removed from cart')
 
-    cart_item.quantity = quantity
+    delta = new_quantity - cart_item.quantity  # how much stock we need to add/reduce
+
+    if delta > 0:
+        # Trying to increase quantity, check if enough stock
+        if product.stock < delta:
+            return error_response(f'Only {product.stock} more items available', 400)
+        product.stock -= delta
+        product.reserved_stock += delta
+    elif delta < 0:
+        # Reducing quantity, release reserved stock
+        product.stock += -delta
+        product.reserved_stock -= -delta
+
+    cart_item.quantity = new_quantity
+    cart_item.reserved_until = datetime.utcnow() + timedelta(minutes=CART_RESERVATION_MINUTES)
+
     db.session.commit()
     return success_response(cart_item.to_dict(), 'Cart updated')
 
@@ -499,26 +535,47 @@ def update_cart_item(item_id):
 @app.route('/api/cart/<int:item_id>', methods=['DELETE'])
 @login_required
 def remove_from_cart(item_id):
-    """Remove item from cart"""
+    """Remove item from cart and release reserved stock"""
     cart_item = CartItem.query.filter_by(
         id=item_id,
         customer_id=request.customer.id
     ).first_or_404()
 
+    product = (
+        Product.query
+        .filter_by(id=cart_item.product_id)
+        .with_for_update()  # lock row for safe stock update
+        .first()
+    )
+
+    # Release reserved stock
+    if cart_item.quantity > 0:
+        product.stock += cart_item.quantity
+        product.reserved_stock -= cart_item.quantity
+
     db.session.delete(cart_item)
     db.session.commit()
+
     return success_response(None, 'Item removed from cart')
 
 
 @app.route('/api/cart/clear', methods=['DELETE'])
 @login_required
 def clear_cart():
-    """Clear cart and release all reservations"""
+    """Clear cart and release all reserved stock"""
     cart_items = CartItem.query.filter_by(customer_id=request.customer.id).all()
 
     for item in cart_items:
-        if item.product and item.reserved_quantity > 0:
-            item.product.release_stock(item.reserved_quantity)
+        if item.quantity > 0 and item.product:
+            product = (
+                Product.query
+                .filter_by(id=item.product_id)
+                .with_for_update()  # lock row for safe stock update
+                .first()
+            )
+            product.stock += item.quantity
+            product.reserved_stock -= item.quantity
+
         db.session.delete(item)
 
     db.session.commit()
@@ -527,84 +584,113 @@ def clear_cart():
 @app.route('/api/cart/extend', methods=['POST'])
 @login_required
 def extend_reservations():
-    """Extend all cart reservations"""
+    """Extend all active cart reservations"""
     cart_items = CartItem.query.filter_by(customer_id=request.customer.id).all()
 
+    extended_items = []
     for item in cart_items:
-        item.reserved_until = datetime.utcnow() + timedelta(minutes=CART_RESERVATION_MINUTES)
+        if item.reserved_until and item.reserved_until > datetime.utcnow():
+            # Only extend if reservation is active
+            item.reserved_until = datetime.utcnow() + timedelta(minutes=CART_RESERVATION_MINUTES)
+            extended_items.append({
+                'product_id': item.product_id,
+                'new_expiry': item.reserved_until.isoformat()
+            })
 
     db.session.commit()
+
     return success_response({
-        'items_extended': len(cart_items),
-        'new_expiry': (datetime.utcnow() + timedelta(minutes=CART_RESERVATION_MINUTES)).isoformat()
+        'items_extended': len(extended_items),
+        'extended_items': extended_items
     })
 @app.route('/api/cart/checkout', methods=['POST'])
 @login_required
 def checkout():
-    """Convert cart to order - confirms reserved stock"""
-    cart_items = CartItem.query.filter_by(customer_id=request.customer.id).all()
+    """Convert cart to order - confirms reserved stock safely"""
+
+    cart_items = (
+        CartItem.query
+        .filter_by(customer_id=request.customer.id)
+        .join(Product)
+        .with_for_update()
+        .all()
+    )
 
     if not cart_items:
         return error_response('Cart is empty')
 
-    # Verify all items still have valid reservations or available stock
     errors = []
+
+    # Validate availability
     for item in cart_items:
-        if not item.product.active:
-            errors.append(f'{item.product.name} is no longer available')
-        elif item.reserved_quantity < item.quantity:
-            # Some reservation expired, check if stock available
-            needed = item.quantity - item.reserved_quantity
-            if item.product.stock < needed:
-                errors.append(
-                    f'{item.product.name}: reservation expired, only {item.product.stock + item.reserved_quantity} available'
-                )
+        product = item.product
+
+        # Optional but recommended if you track expiration
+        if hasattr(product, "cleanup_expired_reservations"):
+            product.cleanup_expired_reservations()
+
+        if not product.active:
+            errors.append(f'{product.name} is no longer available')
+            continue
+
+        # Determine how much is actually still reserved
+        actual_reserved = min(item.reserved_quantity, product.reserved_stock)
+        extra_needed = item.quantity - actual_reserved
+
+        if extra_needed > product.stock:
+            available = product.stock + actual_reserved
+            errors.append(
+                f'{product.name}: only {available} available'
+            )
 
     if errors:
+        db.session.rollback()
         return error_response(errors, 400)
 
-    # Calculate total
+    # Calculate order total
     total = sum(item.product.price * item.quantity for item in cart_items)
 
-    # Get shipping address from request or use customer's default
     data = request.get_json() or {}
     shipping_address = data.get('shipping_address') or request.customer.address
 
-    # Create order
     order = Order(
         customer_id=request.customer.id,
         total_amount=total,
         shipping_address=shipping_address,
         status='confirmed'
     )
-    db.session.add(order)
-    db.session.flush()  # Get order ID
 
-    # Create order items and confirm reservations
+    db.session.add(order)
+    db.session.flush()
+
+    # Create order items and deduct stock
     for cart_item in cart_items:
+        product = cart_item.product
+
+        actual_reserved = min(cart_item.reserved_quantity, product.reserved_stock)
+        extra_needed = cart_item.quantity - actual_reserved
+
         order_item = OrderItem(
             order_id=order.id,
-            product_id=cart_item.product_id,
+            product_id=product.id,
             quantity=cart_item.quantity,
-            price_at_purchase=cart_item.product.price
+            price_at_purchase=product.price
         )
         db.session.add(order_item)
 
-        # Confirm the reservation (removes from reserved_stock)
-        cart_item.product.confirm_reservation(cart_item.reserved_quantity)
+        # Confirm the reserved portion
+        if actual_reserved > 0:
+            product.confirm_reservation(actual_reserved)
 
-        # If we need more than reserved (reservation partially expired)
-        extra_needed = cart_item.quantity - cart_item.reserved_quantity
+        # Deduct any extra stock
         if extra_needed > 0:
-            cart_item.product.stock -= extra_needed
+            product.stock -= extra_needed
 
-        # Remove from cart
         db.session.delete(cart_item)
 
     db.session.commit()
 
     return success_response(order.to_dict(), 'Order placed successfully', 201)
-
 
 # orders
 @app.route('/api/orders', methods=['GET'])

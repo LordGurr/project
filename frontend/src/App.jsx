@@ -78,7 +78,7 @@ function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) 
               style={currentPage === 'admin' ? styles.navButtonActive : styles.navButton}
               onClick={() => setCurrentPage('admin')}
             >
-              🛡️ Admin
+              Admin
             </button>
           )}
         </nav>
@@ -403,9 +403,9 @@ function CartPage({ cart, onUpdateQuantity, onRemove, onCheckout, onExtendReserv
                 <p style={styles.cartItemPrice}>
                   {(item.product.price / 100).toFixed(2)} kr each
                 </p>
-                {item.is_reserved ? (
+                {item.reserved_until && new Date(item.reserved_until) > new Date() ? (
                   <p style={styles.reservedLabel}>
-                    ✓ Reserved until {addHours(new Date(item.reserved_until),1).toLocaleTimeString()}
+                    ✓ Reserved until {addHours(new Date(item.reserved_until), 1).toLocaleTimeString()}
                   </p>
                 ) : (
                   <p style={styles.expiredLabel}>⚠️ Reservation expired</p>
@@ -670,7 +670,7 @@ function AdminPage({ setToast }) {
 
   return (
     <div style={styles.page}>
-      <h2 style={styles.pageTitle}>🛡️ Admin - Products & Categories</h2>
+      <h2 style={styles.pageTitle}>Admin - Products & Categories</h2>
 
       <div style={{ display: 'flex', gap: '30px', alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
@@ -932,7 +932,11 @@ export default function App() {
   }, []);
   
   const loadCart = async () => {
+    
     try {
+      await api('/cart/extend', {
+        method: 'POST',
+      });
       const data = await api('/cart');
       setCart(data.data);
     } catch (err) {
@@ -965,6 +969,9 @@ export default function App() {
       await api('/cart', {
         method: 'POST',
         body: { product_id: product.id, quantity: 1 },
+      });
+      await api('/cart/extend', {
+        method: 'POST',
       });
       await loadCart();
       setToast(`Added ${product.name} to cart!`);
@@ -1920,5 +1927,9 @@ const styles = {
   reviewCount: {
     fontSize: "14px",
     color: "#666"
+  },
+  partialReservedLabel: {
+    color: "#d97706",
+    fontSize: "0.9rem"
   }
 };
