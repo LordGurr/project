@@ -1076,6 +1076,9 @@ function ProductPage({ productId, onAddToCart , customer}) {
     loadReviews();
   }, [productId]);
 
+
+  
+
   const loadProduct = async () => {
     const data = await api(`/products/${productId}`);
     setProduct(data.data);
@@ -1109,7 +1112,7 @@ function ProductPage({ productId, onAddToCart , customer}) {
 
     try {
       await api(`/reviews/${review_id}`, { method: 'DELETE' });
-      reloadReviews();
+      loadReviews();
     } catch (err) {
       alert(err.message);
     }
