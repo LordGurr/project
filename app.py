@@ -607,12 +607,11 @@ def extend_reservations():
 @login_required
 def checkout():
     """Convert cart to order - confirms reserved stock safely"""
-
     cart_items = (
         CartItem.query
         .filter_by(customer_id=request.customer.id)
         .join(Product)
-        .with_for_update()
+        .with_for_update()  # lock rows for safe stock update
         .all()
     )
 
@@ -621,27 +620,22 @@ def checkout():
 
     errors = []
 
-    # Validate availability
+    # Validate availability and active reservations
     for item in cart_items:
         product = item.product
-
-        # Optional but recommended if you track expiration
-        if hasattr(product, "cleanup_expired_reservations"):
-            product.cleanup_expired_reservations()
 
         if not product.active:
             errors.append(f'{product.name} is no longer available')
             continue
 
-        # Determine how much is actually still reserved
-        actual_reserved = min(item.reserved_quantity, product.reserved_stock)
-        extra_needed = item.quantity - actual_reserved
+        # Check if reservation expired
+        if not item.reserved_until or item.reserved_until < datetime.utcnow():
+            errors.append(f'{product.name}: reservation expired')
+            continue
 
-        if extra_needed > product.stock:
-            available = product.stock + actual_reserved
-            errors.append(
-                f'{product.name}: only {available} available'
-            )
+        # Check if reserved stock is sufficient
+        if product.reserved_stock < item.quantity:
+            errors.append(f'{product.name}: only {product.reserved_stock} reserved, cannot fulfill {item.quantity}')
 
     if errors:
         db.session.rollback()
@@ -659,34 +653,26 @@ def checkout():
         shipping_address=shipping_address,
         status='confirmed'
     )
-
     db.session.add(order)
-    db.session.flush()
+    db.session.flush()  # get order ID
 
-    # Create order items and deduct stock
-    for cart_item in cart_items:
-        product = cart_item.product
+    # Create order items and finalize reservations
+    for item in cart_items:
+        product = item.product
 
-        actual_reserved = min(cart_item.reserved_quantity, product.reserved_stock)
-        extra_needed = cart_item.quantity - actual_reserved
+        # Confirm reserved stock
+        product.confirm_reservation(item.quantity)
 
         order_item = OrderItem(
             order_id=order.id,
             product_id=product.id,
-            quantity=cart_item.quantity,
+            quantity=item.quantity,
             price_at_purchase=product.price
         )
         db.session.add(order_item)
 
-        # Confirm the reserved portion
-        if actual_reserved > 0:
-            product.confirm_reservation(actual_reserved)
-
-        # Deduct any extra stock
-        if extra_needed > 0:
-            product.stock -= extra_needed
-
-        db.session.delete(cart_item)
+        # Remove from cart
+        db.session.delete(item)
 
     db.session.commit()
 

@@ -403,12 +403,12 @@ function CartPage({ cart, onUpdateQuantity, onRemove, onCheckout, onExtendReserv
                 <p style={styles.cartItemPrice}>
                   {(item.product.price / 100).toFixed(2)} kr each
                 </p>
-                {item.reserved_until && new Date(item.reserved_until) > new Date() ? (
+                {item.reserved_until && addHours(new Date(item.reserved_until), 1) > new Date() ? (
                   <p style={styles.reservedLabel}>
                     ✓ Reserved until {addHours(new Date(item.reserved_until), 1).toLocaleTimeString()}
                   </p>
                 ) : (
-                  <p style={styles.expiredLabel}>⚠️ Reservation expired</p>
+                  <p style={styles.expiredLabel}>⚠️ Reservation expired {addHours(new Date(item.reserved_until), 1).toLocaleTimeString()}</p>
                 )}
               </div>
               
