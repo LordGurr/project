@@ -639,6 +639,17 @@ def get_product_reviews(product_id):
     return success_response([r.to_dict() for r in reviews])
 
 
+@app.route('/api/reviews/<int:review_id>', methods=['DELETE'])
+@admin_required
+def delete_review(review_id):
+    """Admin delete review"""
+    review = Review.query.get_or_404(review_id)
+
+    db.session.delete(review)
+    db.session.commit()
+
+    return success_response(None, 'Review deleted')
+
 @app.route('/api/products/<int:product_id>/reviews', methods=['POST'])
 @login_required
 def create_review(product_id):

@@ -1054,6 +1054,7 @@ export default function App() {
           <ProductPage
             productId={selectedProductId}
             onAddToCart={handleAddToCart}
+            customer={customer}
           />
         )} 
       </main>
@@ -1063,13 +1064,12 @@ export default function App() {
   );
 }
 
-function ProductPage({ productId, onAddToCart }) {
+function ProductPage({ productId, onAddToCart , customer}) {
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(true);
-
 
   useEffect(() => {
     loadProduct();
@@ -1099,6 +1099,17 @@ function ProductPage({ productId, onAddToCart }) {
 
       setComment('');
       loadReviews();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleDelete = async (review_id) => {
+    if (!window.confirm('Delete this review?')) return;
+
+    try {
+      await api(`/reviews/${review_id}`, { method: 'DELETE' });
+      reloadReviews();
     } catch (err) {
       alert(err.message);
     }
@@ -1138,6 +1149,14 @@ function ProductPage({ productId, onAddToCart }) {
           <div key={r.id} style={styles.review}>
             <strong>{'⭐'.repeat(r.rating)}</strong>
             <p>{r.comment}</p>
+              {customer && customer.role > 0 && (
+              <button
+                style={styles.deleteReviewButton}
+                onClick={() => handleDelete(r.id)}
+              >
+                Delete
+              </button>
+            )}
           </div>
         ))}
 
