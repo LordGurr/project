@@ -179,9 +179,21 @@ function ProductCard({ product, onAddToCart, setCurrentPage, openProduct }) {
         )}
         
         {product.average_rating && (
-          <p style={styles.rating}>
-            {'⭐'.repeat(Math.round(product.average_rating))} ({product.review_count})
-          </p>
+          <div style={styles.rating}>
+            {[...Array(5)].map((_, i) => (
+              <span
+                key={i}
+                style={{
+                  color: i < Math.round(product.average_rating) ? "#f5c518" : "#d3d3d3"
+                }}
+              >
+                ★
+              </span>
+            ))}
+            <span style={styles.reviewCount}>
+              ({product.review_count})
+            </span>
+          </div>
         )}
       </div>
     </div>
@@ -1129,7 +1141,12 @@ function ProductPage({ productId, onAddToCart , customer}) {
     <div style={styles.page}>
       <div style={styles.productPage}>
         <h2>{product.name}</h2>
-
+        <div style={styles.productImage}>
+          {product.category_name === 'Drinks' ? '🥤' : 
+          product.category_name === 'Frozen Food' ? '🍕' :
+          product.category_name === 'Ice Cream' ? '🍦' :
+          product.category_name === 'Snacks' ? '🍿' : '🍫'}
+        </div>
         <p>Barcode: {product.barcode}</p>
         <p>Price: {(product.price / 100).toFixed(2)} kr</p>
         <p>Stock: {product.stock}</p>
@@ -1142,10 +1159,22 @@ function ProductPage({ productId, onAddToCart , customer}) {
         </button>
 
         {product.average_rating && (
-          <p>
-            Rating: {'⭐'.repeat(Math.round(product.average_rating))}
-            ({product.review_count})
-          </p>
+          <div style={styles.productRating}>
+            <div style={styles.stars}>
+              {[...Array(5)].map((_, i) => (
+                <span
+                  key={i}
+                  style={{
+                    color: i < Math.round(product.average_rating) ? "#f5c518" : "#d3d3d3"                  }}
+                >
+                  ★
+                </span>
+              ))}
+            </div>
+            <span style={styles.reviewCount}>
+              ({product.review_count})
+            </span>
+          </div>
         )}
       </div>
 
@@ -1204,16 +1233,20 @@ function ProductPage({ productId, onAddToCart , customer}) {
         <div style={styles.reviewForm}>
           <h4>Write Review</h4>
 
-          <select
-            value={rating}
-            onChange={(e) => setRating(Number(e.target.value))}
-          >
-            <option value={5}>5 ⭐</option>
-            <option value={4}>4 ⭐</option>
-            <option value={3}>3 ⭐</option>
-            <option value={2}>2 ⭐</option>
-            <option value={1}>1 ⭐</option>
-          </select>
+          <div style={styles.ratingContainer}>
+            {[1, 2, 3, 4, 5].map((star) => (
+              <span
+                key={star}
+                onClick={() => setRating(star)}
+                style={{
+                  ...styles.star,
+                  color: star <= rating ? "#f5c518" : "#d3d3d3"
+                }}
+              >
+                ★
+              </span>
+            ))}
+          </div>
 
           <textarea
             placeholder="Write your title..."
@@ -1847,5 +1880,45 @@ const styles = {
   reviewComment: {
     marginTop: "8px",
     lineHeight: "1.4"
+  },
+  ratingContainer: {
+    display: "flex",
+    gap: "4px",
+    cursor: "pointer",
+    fontSize: "24px",
+    marginBottom: "10px"
+  },
+
+  star: {
+    //transition: "color 0.2s",
+  },
+
+  productRating: {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px"
+  },
+
+  stars: {
+    letterSpacing: "3px",
+    fontSize: "26px",   // Bigger stars
+    lineHeight: 1
+  },
+
+  reviewCount: {
+    fontSize: "14px",
+    color: "#666"
+  },
+  rating: {
+    display: "flex",
+    alignItems: "center",
+    gap: "1px",
+    fontSize: "26px",   // bigger stars
+    letterSpacing: "1px"
+  },
+
+  reviewCount: {
+    fontSize: "14px",
+    color: "#666"
   }
 };

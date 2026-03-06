@@ -554,7 +554,6 @@ def checkout():
             errors.append(f'{item.product.name} is no longer available')
         elif item.reserved_quantity < item.quantity:
             # Some reservation expired, check if stock available
-            errors.append(f"Reservation expired")
             needed = item.quantity - item.reserved_quantity
             if item.product.stock < needed:
                 errors.append(
