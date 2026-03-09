@@ -698,6 +698,26 @@ def get_order(order_id):
     ).first_or_404()
     return success_response(order.to_dict())
 
+@app.route('/api/admin/orders/<int:order_id>/status', methods=['PUT'])
+@admin_required
+def update_order_status(order_id):
+    data = request.get_json()
+    new_status = data.get('status')
+    if new_status not in ['confirmed', 'shipped', 'delivered', 'cancelled']:
+        return error_response('Invalid status')
+    
+    order = Order.query.get_or_404(order_id)
+    order.status = new_status
+    db.session.commit()
+    return success_response(order.to_dict(), 'Order status updated')
+
+
+@app.route('/api/admin/orders', methods=['GET'])
+@admin_required
+def get_all_orders():
+    """Get all orders for admin"""
+    orders = Order.query.order_by(Order.created_at.desc()).all()
+    return success_response([o.to_dict() for o in orders])
 
 # reviews
 @app.route('/api/products/<int:product_id>/reviews', methods=['GET'])

@@ -81,6 +81,14 @@ function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) 
               Admin
             </button>
           )}
+          {customer && customer.role > 0 && (
+            <button
+              style={currentPage === 'admin_orders' ? styles.navButtonActive : styles.navButton}
+              onClick={() => setCurrentPage('admin_orders')}
+            >
+              Edit Orders
+            </button>
+          )}
         </nav>
         
         <div style={styles.headerRight}>
@@ -483,6 +491,13 @@ function OrdersPage({ customer, setCurrentPage }) {
     }
     setLoading(false);
   };
+
+  const statusColors = {
+    confirmed: '#2196F3', // blue
+    shipped: '#FF9800',   // orange
+    delivered: '#4CAF50', // green
+    cancelled: '#F44336', // red
+  };
   
   if (!customer) {
     return (
@@ -516,7 +531,14 @@ function OrdersPage({ customer, setCurrentPage }) {
             <div key={order.id} style={styles.orderCard}>
               <div style={styles.orderHeader}>
                 <span style={styles.orderId}>Order #{order.id}</span>
-                <span style={styles.orderStatus}>{order.status}</span>
+                <span 
+                  style={{
+                    ...styles.orderStatus,
+                    backgroundColor: statusColors[order.status] || '#999',
+                  }}
+                >
+                  {order.status}
+                </span>
               </div>
               
               <div style={styles.orderItems}>
@@ -785,6 +807,81 @@ function AdminPage({ setToast }) {
     </div>
   );
 }
+
+function AdminOrdersPage({ setToast }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadOrders = async () => {
+    setLoading(true);
+    try {
+      const data = await api('/admin/orders');
+      setOrders(data.data);
+    } catch (err) {
+      setToast(err.message);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadOrders();
+  }, []);
+
+  const handleStatusChange = async (orderId, status) => {
+    try {
+      await api(`/admin/orders/${orderId}/status`, { 
+        method: 'PUT', 
+        body: { status } 
+      });
+      setToast('Order status updated');
+      loadOrders();
+    } catch (err) {
+      setToast(err.message);
+    }
+  };
+
+  if (loading) return <div style={styles.loading}>Loading orders...</div>;
+
+  return (
+    <div style={styles.page}>
+      <h2 style={styles.pageTitle}>All Orders (Admin)</h2>
+
+      {orders.length === 0 ? (
+        <div>No orders yet</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {orders.map(order => (
+            <div key={order.id} style={{ background: '#fff', padding: 12, borderRadius: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <strong>Order #{order.id}</strong>
+                <select 
+                  value={order.status} 
+                  onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                >
+                  <option value="confirmed">Confirmed</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              <div style={{ marginTop: 6 }}>
+                {order.items.map(item => (
+                  <div key={item.id} style={{ fontSize: 14 }}>
+                    {item.quantity}x {item.product_name} - {(item.subtotal_kr).toFixed(2)} kr
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 6, fontWeight: 'bold' }}>
+                Total: {order.total_amount_kr.toFixed(2)} kr
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // Login/Register Page
 function AuthPage({ onLogin, setCurrentPage }) {
@@ -1063,6 +1160,10 @@ export default function App() {
         
         {currentPage === 'admin' && (
           <AdminPage setToast={setToast} />
+        )}
+
+        {currentPage === 'admin_orders' && (
+          <AdminOrdersPage setToast={setToast} />
         )}
 
         {currentPage === 'login' && (
