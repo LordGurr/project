@@ -122,7 +122,7 @@ function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) 
 }
 
 // Product Card Component
-function ProductCard({ product, onAddToCart, setCurrentPage, openProduct }) {
+function ProductCard({ product, onAddToCart, setCurrentPage, openProduct,loadCategories, loadProducts }) {
   const [adding, setAdding] = useState(false);
 
   //const[setSelectedProductId, setCurrentPage] = openProduct;
@@ -130,6 +130,8 @@ function ProductCard({ product, onAddToCart, setCurrentPage, openProduct }) {
   const handleAdd = async () => {
     setAdding(true);
     await onAddToCart(product);
+    await loadCategories();
+    await loadProducts();
     setTimeout(() => setAdding(false), 500);
   };
   
@@ -305,6 +307,8 @@ function ProductsPage({ onAddToCart, openProduct }) {
                 product={product}
                 onAddToCart={onAddToCart}
                 openProduct={openProduct}
+                loadCategories={loadCategories}
+                loadProducts={loadProducts}
               />
             ))}
           </div>
@@ -1123,7 +1127,7 @@ export default function App() {
       setToast(err.message);
     }
   };
-  
+
   return (
     <div style={styles.app}>
       <Header

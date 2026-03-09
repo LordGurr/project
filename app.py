@@ -17,9 +17,10 @@ from functools import wraps
 import os
 import time
 from datetime import datetime,timedelta
+from apscheduler.schedulers.background import BackgroundScheduler
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
-CART_RESERVATION_MINUTES=15
+CART_RESERVATION_MINUTES=2
 # database configuring
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
     'DATABASE_URL',
@@ -129,6 +130,8 @@ def get_categories():
         data['product_count'] = len(c.products)
         result.append(data)
     return success_response(result)
+
+
 
 @admin_required
 @app.route('/api/categories', methods=['POST'])
@@ -413,7 +416,14 @@ def get_current_customer():
     """Get current customer's profile"""
     return success_response(request.customer.to_dict())
 
+@app.route('/api/customers/admin', methods=['GET'])
+@login_required
+def get_current_customer_is_admin():
+    data = request.get_json()
 
+    """Get current customer's profile"""
+    role = Customer.query.get(data['role'])
+    return success_response(role > 0)
 
 # shopping cart
 @app.route('/api/cart', methods=['GET'])
@@ -825,6 +835,27 @@ def admin_get_customers():
 @app.errorhandler(404)
 def not_found(e):
     return error_response('Resource not found', 404)
+
+def cleanup_expired_reservations():
+    with app.app_context():
+        now = datetime.utcnow()
+
+        expired_items = CartItem.query.filter(
+            CartItem.reserved_until < now
+        ).all()
+
+        for item in expired_items:
+            product =Product.query.get_or_404(item.product_id)
+            product.reserved_stock -=item.quantity
+            product.stock += item.quantity
+            db.session.delete(item)
+
+        db.session.commit()
+
+
+scheduler = BackgroundScheduler()
+scheduler.add_job(cleanup_expired_reservations, 'interval', seconds=60)
+scheduler.start()
 
 
 @app.errorhandler(500)
