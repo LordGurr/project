@@ -46,7 +46,7 @@ async function api(endpoint, options = {}) {
 // ============================================================================
 
 // Header Component
-function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) {
+function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout, admin }) {
   return (
     <header style={styles.header}>
       <div style={styles.headerContent}>
@@ -73,7 +73,7 @@ function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) 
               My Orders
             </button>
           )}
-          {customer && customer.role > 0 && (
+          {customer && admin && (
             <button
               style={currentPage === 'admin' ? styles.navButtonActive : styles.navButton}
               onClick={() => setCurrentPage('admin')}
@@ -81,7 +81,7 @@ function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) 
               Admin
             </button>
           )}
-          {customer && customer.role > 0 && (
+          {customer && admin && (
             <button
               style={currentPage === 'admin_orders' ? styles.navButtonActive : styles.navButton}
               onClick={() => setCurrentPage('admin_orders')}
@@ -96,7 +96,7 @@ function Header({ cartCount, currentPage, setCurrentPage, customer, onLogout }) 
             <div style={styles.userInfo}>
               <span style={styles.userName}>
                 {customer.first_name || customer.email}
-                {customer.role > 0 && <span style={styles.adminBadge}>ADMIN</span>}
+                {admin && <span style={styles.adminBadge}>ADMIN</span>}
               </span>
               <button style={styles.logoutButton} onClick={onLogout}>Logout</button>
             </div>
@@ -144,6 +144,7 @@ function ProductCard({ product, onAddToCart, setCurrentPage, openProduct,loadCat
         {product.category_name === 'Drinks' ? '🥤' : 
          product.category_name === 'Frozen Food' ? '🍕' :
          product.category_name === 'Ice Cream' ? '🍦' :
+         product.category_name === 'MÄNNISKOR' ? '🧑' :
          product.category_name === 'Snacks' ? '🍿' : '🍫'}
       </div>
       
@@ -237,6 +238,8 @@ function ProductsPage({ onAddToCart, openProduct }) {
       console.error('Failed to load categories:', err);
     }
   };
+
+
   
   const loadProducts = async () => {
     setLoading(true);
@@ -1016,6 +1019,7 @@ export default function App() {
   const [cart, setCart] = useState({ items: [], total: 0, total_kr: 0, item_count: 0 });
   const [toast, setToast] = useState(null);
   const [selectedProductId, setSelectedProductId] = useState(null);
+  const [admin, setAdmin]= useState(false);
 
   const openProduct = (id) => {
     setSelectedProductId(id);
@@ -1029,9 +1033,19 @@ export default function App() {
     if (savedCustomerId && savedCustomer) {
       setCustomer(JSON.parse(savedCustomer));
       loadCart();
+      loadAdmin();
     }
   }, []);
   
+  const loadAdmin = async () => {
+    try {
+      const data = await api('/customers/admin')
+      setAdmin(data.data);
+    } catch (err) {
+      console.error('Failed to load admin:', err);
+    }
+  };
+
   const loadCart = async () => {
     
     try {
@@ -1050,6 +1064,7 @@ export default function App() {
     localStorage.setItem('customer', JSON.stringify(customerData));
     setCustomer(customerData);
     loadCart();
+    loadAdmin();
   };
   
   const handleLogout = () => {
@@ -1136,6 +1151,7 @@ export default function App() {
         setCurrentPage={setCurrentPage}
         customer={customer}
         onLogout={handleLogout}
+        admin={admin}
       />
       
       <main style={styles.main}>
@@ -1179,6 +1195,7 @@ export default function App() {
             productId={selectedProductId}
             onAddToCart={handleAddToCart}
             customer={customer}
+            admin={admin}
           />
         )} 
       </main>
@@ -1188,7 +1205,7 @@ export default function App() {
   );
 }
 
-function ProductPage({ productId, onAddToCart , customer}) {
+function ProductPage({ productId, onAddToCart , customer, admin}) {
   const [product, setProduct] = useState(null);
   const [reviews, setReviews] = useState([]);
   const [rating, setRating] = useState(5);
@@ -1327,7 +1344,7 @@ function ProductPage({ productId, onAddToCart , customer}) {
 
               <p style={styles.reviewComment}>{r.comment}</p>
 
-              {customer && customer.role > 0 && (
+              {customer && admin && (
                 <button
                   style={styles.deleteReviewButton}
                   onClick={() => handleDelete(r.id)}

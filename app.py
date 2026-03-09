@@ -409,21 +409,13 @@ def login_customer():
         'customer': customer.to_dict()
     }, 'Login successful')
 
-
-@app.route('/api/customers/me', methods=['GET'])
-@login_required
-def get_current_customer():
-    """Get current customer's profile"""
-    return success_response(request.customer.to_dict())
-
 @app.route('/api/customers/admin', methods=['GET'])
 @login_required
 def get_current_customer_is_admin():
-    data = request.get_json()
-
-    """Get current customer's profile"""
-    role = Customer.query.get(data['role'])
-    return success_response(role > 0)
+    customer_id=request.customer.id
+    customer = Customer.query.get_or_404(customer_id)
+    admin = customer.role>0
+    return success_response(admin)
 
 # shopping cart
 @app.route('/api/cart', methods=['GET'])
