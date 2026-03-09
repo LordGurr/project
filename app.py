@@ -20,7 +20,7 @@ from datetime import datetime,timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
-CART_RESERVATION_MINUTES=2
+CART_RESERVATION_MINUTES=15
 # database configuring
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
     'DATABASE_URL',
